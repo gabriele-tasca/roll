@@ -6,7 +6,8 @@ use std::cmp;
 // It's a pretty good solution formally, but the Rust syntax for enums and structs can get kind of verbose.
 // The other (possibly more common) solution would be inheritance, but Rust doesn't implement it.
 // Traits work in a very similar way to inheritance, but they lack some features, especially the ability 
-// to have fields in traits. Technically you can work around this with get and set functions in the parent class,
+// to have fields in traits. Technically you can work around this 
+// with get and set functions for each field you'd want in the parent class,
 // but those would need to have be implemented identically a bunch of times in each derived class. 
 
 
@@ -255,20 +256,20 @@ fn fill(slot: &mut Box<NodeSlot>) {
 
         NodeType::Many(mslot) => {
             match &mslot.manynode {
-                ManyNodeType::ManySum(_) => {
+                // ManyNodeType::ManySum(_) => {
                     
-                    let mut res = 0;
-                    for j in &mut mslot.leaves {
-                        if j.noderesult == None {  fill(j); }
-                        let jres = j.noderesult.unwrap();
-                        res += jres.value;
-                    }
-                    slot.noderesult = Some(DiceResult{ value: res, crit: Crit::Normal});
-                    // ^ change this maybe
+                //     let mut res = 0;
+                //     for j in &mut mslot.leaves {
+                //         if j.noderesult == None {  fill(j); }
+                //         let jres = j.noderesult.unwrap();
+                //         res += jres.value;
+                //     }
+                //     slot.noderesult = Some(DiceResult{ value: res, crit: Crit::Normal});
+                //     // ^ change this maybe
 
-                    // none of the above has ever been tested
+                //     // none of the above has ever been tested
                     
-                }
+                // }
 
                 ManyNodeType::Times(_) => {
                     
@@ -293,28 +294,112 @@ fn fill(slot: &mut Box<NodeSlot>) {
 
 // from each root, set each leaf's position relative to the root, based on the leaves' width.
 fn set_pos(slot: &mut Box<NodeSlot>) {
+    const MIN_SPACING: i32 = 1;
 
     match &mut slot.node {
         NodeType::Binary(a) => {
             
             let left = &mut a.leftleaf;
             let right = &mut a.rightleaf;
-
-            if left.pos.width == None {  set_pos(left); }
-            if right.pos.width == None {  set_pos(right);  }
-
-            let leftwidth = left.pos.width.unwrap();
-            let rightwidth = right.pos.width.unwrap();
-
-            let wstar = cmp::min(leftwidth, rightwidth);
-            let astar = (wstar + 1)/2 ;
-   
-            slot.pos.width = Some( leftwidth + rightwidth + 1 );
             
-            left.pos.x = Some(0 - astar );
-            right.pos.x = Some(astar );
-            left.pos.y = Some(0 - astar );
-            right.pos.y = Some(0 - astar );
+            if left.pos.h == None {  set_pos(left); }
+            if right.pos.h == None {  set_pos(right);  }
+            
+            // special cases: little cones
+
+            // if both are cones:
+            if left.pos.tipwidth_going_east.unwrap() == 0 && left.pos.tipwidth_going_west.unwrap() == 0 
+                    && right.pos.tipwidth_going_east.unwrap() == 0   && right.pos.tipwidth_going_west.unwrap() == 0 {
+
+                // if one is a single number:
+                if left.pos.h.unwrap() == 1 || right.pos.h.unwrap() == 1 {
+                    // both the cones are symmetrical
+                    let leftbwidth = left.pos.basewidth_going_east.unwrap();
+                    let rightbwidth = right.pos.basewidth_going_east.unwrap();
+        
+                    slot.pos.basewidth_going_east = Some( leftbwidth + rightbwidth +2 ); // the 2 is the extra padding for the special case
+                    slot.pos.basewidth_going_west = Some( leftbwidth + rightbwidth +2 ); // the 2 is the extra padding for the special case
+                    slot.pos.tipwidth_going_east = Some(0);
+                    slot.pos.tipwidth_going_west = Some(0);
+                    slot.pos.h = Some( cmp::max(left.pos.h.unwrap(), right.pos.h.unwrap()) + 2 );
+                    slot.pos.branch_type = Some(BranchType::Cone);
+
+                    println!("cone1 bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+                
+                    left.pos.y = Some( -2 );
+                    right.pos.y = Some( -2 );
+                    left.pos.x = Some( -2 );
+                    right.pos.x = Some( 2 );
+                    return;
+
+                // if one is a small cone:
+                } else if left.pos.h.unwrap() == 3 || right.pos.h.unwrap() == 3 {
+
+                    // WARNING: if this special case is taken off, a bug will often appear
+                    // where the trapezoid's tip goes too far down and out of the usual space
+                    // that means the usual relation between the 2 widths and h is not valid anymore
+                    // and that causes the trees to overlap
+                    // I've never seen the bug appear with the special case active, but who knows!
+
+                    let leftbwidth = left.pos.basewidth_going_east.unwrap();
+                    let rightbwidth = right.pos.basewidth_going_east.unwrap();
+        
+                    slot.pos.basewidth_going_east = Some( leftbwidth + rightbwidth + 1 );
+                    slot.pos.basewidth_going_west = Some( leftbwidth + rightbwidth + 1 );
+                    slot.pos.tipwidth_going_east = Some(0);
+                    slot.pos.tipwidth_going_west = Some(0);
+                    slot.pos.h = Some( cmp::max(left.pos.h.unwrap(), right.pos.h.unwrap()) + 3 );
+                    slot.pos.branch_type = Some(BranchType::Cone);
+
+                    println!("cone2 bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+
+
+                    left.pos.y = Some( -3 );
+                    right.pos.y = Some( -3 );
+                    left.pos.x = Some( -3 );
+                    right.pos.x = Some( 3 );
+                    return;
+                }
+            } 
+            
+            // general case: trapezoid => trapezoid
+            // TODO think about adding a min size in case the trapezoid gets bugged (as described above)
+            
+            let tip_width_left = left.pos.tipwidth_going_east.unwrap();
+            let tip_width_right = right.pos.tipwidth_going_west.unwrap();
+            let hmin = cmp::min(left.pos.h.unwrap(), right.pos.h.unwrap());
+            let d_between_centers = tip_width_left+1 + tip_width_right+1 + 2*(hmin-1) + MIN_SPACING;
+
+            // MAYBE +1?
+            slot.pos.basewidth_going_west = Some( left.pos.basewidth_going_west.unwrap() + d_between_centers/2 );
+            slot.pos.basewidth_going_east = Some( left.pos.basewidth_going_east.unwrap() + d_between_centers/2 );
+
+            slot.pos.h = Some( cmp::max(left.pos.h.unwrap(), right.pos.h.unwrap()) + 4);
+            slot.pos.tipwidth_going_east = Some( slot.pos.basewidth_going_east.unwrap() - slot.pos.h.unwrap() +1 ); 
+            slot.pos.tipwidth_going_west = Some( slot.pos.basewidth_going_west.unwrap() - slot.pos.h.unwrap() +1 ); 
+            slot.pos.branch_type = Some(BranchType::Trapezoid);
+            println!("trapezoid bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+
+            left.pos.y = Some( -4 );
+            right.pos.y = Some( -4 );
+            left.pos.x = Some( -d_between_centers/2 );
+            right.pos.x = Some( d_between_centers/2 );
+            
+
+            // OLD ALGORYTHM for cones n stuff
+            // let leftbwidth = left.pos.basewidth.unwrap();
+            // let rightbwidth = right.pos.basewidth.unwrap();
+
+            // let wstar = cmp::min(leftbwidth, rightbwidth);
+            // let astar = (wstar + 1)/2 ;
+
+            // slot.pos.basewidth = Some( leftbwidth + rightbwidth + 1 );
+            
+            // left.pos.x = Some(0 - astar );
+            // right.pos.x = Some(astar );
+            // left.pos.y = Some(0 - astar );
+            // right.pos.y = Some(0 - astar );
+
 
         }
 
@@ -326,99 +411,131 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
             }
         }
 
+        ////////////////////
         NodeType::Many(mslot) => {
-            match &mslot.manynode {
-                ManyNodeType::ManySum(_) => {
-                    
-                    let mut ww = 0;
-                    for j in &mut mslot.leaves {
-                        if j.pos.width == None {  set_pos(j); }
-                        eprintln!("error here 1");
-                        ww += slot.pos.width.unwrap();
-                        ww += 1;
-                    }
-                    if mslot.leaves.len() != 1 {  ww -= 1;  }
 
-                    let mut currx = -ww/2;
-                    for j in &mut mslot.leaves {
-                        j.pos.y =  Some( -1 );   
-                        j.pos.x = Some( currx );
-                        currx += j.pos.width.unwrap() + 1;
-                    }
-                    
+            for j in &mut mslot.leaves {
+                    if j.pos.h == None {  set_pos(j); }
                 }
+
+
+            match &mslot.manynode {
+                // ManyNodeType::ManySum(_) => {
+                    
+                //     let mut ww = 0;
+                //     for j in &mut mslot.leaves {
+                //         if j.pos.tipwidth == None {  set_pos(j); }
+                //         eprintln!("error here 1");
+                //         ww += slot.pos.width.unwrap();
+                //         ww += 1;
+                //     }
+                //     if mslot.leaves.len() != 1 {  ww -= 1;  }
+
+                //     let mut currx = -ww/2;
+                //     for j in &mut mslot.leaves {
+                //         j.pos.y =  Some( -1 );   
+                //         j.pos.x = Some( currx );
+                //         currx += j.pos.width.unwrap() + 1;
+                //     }
+                    
+                // }
 
                 ManyNodeType::Times(_) => {
                     
-                    let mut ww = 0;
-                    for j in &mut mslot.leaves {
-                        if j.pos.width == None {  set_pos(j); }
-                        ww += j.pos.width.unwrap();
-                        ww += 1;
-                    }
-                    if mslot.leaves.len() != 1 {  ww -= 1;  }
-                    slot.pos.width = Some(ww);
 
+                    println!("baa baa mslot.leaves.len() {}", mslot.leaves.len());
                     if mslot.leaves.len() == 1 { // zero times
+
                         let lonenode = &mut mslot.leaves[0];
-                        lonenode.pos.y =  Some( 0 );
-                        lonenode.pos.x = Some( -5 );
-                        slot.pos.width = Some(lonenode.pos.width.unwrap() + 6); // TODO check the 6 
+                        lonenode.pos.y =  Some( -3 );
+                        lonenode.pos.x = Some( 0 );
+                        slot.pos.basewidth_going_west = Some( lonenode.pos.basewidth_going_west.unwrap() );
+                        slot.pos.basewidth_going_east = Some( lonenode.pos.basewidth_going_east.unwrap() );
+                        slot.pos.tipwidth_going_west = Some( lonenode.pos.tipwidth_going_west.unwrap() -3 );
+                        slot.pos.tipwidth_going_east = Some( lonenode.pos.tipwidth_going_east.unwrap() -3 );
+                        slot.pos.h = Some( lonenode.pos.h.unwrap() + 3 );
+                        println!("0time bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+
+
+                        // maybe bug with tip width like for cone2
+
 
                     } else if mslot.leaves.len() == 2 { // one time
-                        let exprw;
-                        {
-                            let exprnode = &mut (mslot.leaves[1]);
-                            exprw = exprnode.pos.width.unwrap();
-                            exprnode.pos.y =  Some( -2 );
-                            exprnode.pos.x = Some( 0 );
-                        }
-                        let timesnode = &mut (mslot.leaves[0]);
-                        timesnode.pos.y =  Some( -2 );
-                        let timesw = timesnode.pos.width.unwrap();
 
-                        let wstar = cmp::min(exprw, timesw);
-                        let astar = wstar + 1 ;
+                        let leaves = &mut mslot.leaves;
 
-                        timesnode.pos.x = Some( -astar -1);
-
-                        slot.pos.width = Some( exprw + timesw*2 + 4 );
+                        let tip_width_left = leaves[0].pos.tipwidth_going_east.unwrap();
+                        let tip_width_right = leaves[1].pos.tipwidth_going_west.unwrap();
+                        let hmin = cmp::min(leaves[0].pos.h.unwrap(), leaves[1].pos.h.unwrap());
+                        let d_between_centers = tip_width_left+1 + tip_width_right+1 + 2*(hmin-1) + MIN_SPACING;
+            
+                        // MAYBE +1?
+                        slot.pos.basewidth_going_west = Some( leaves[0].pos.basewidth_going_west.unwrap() + d_between_centers );
+                        slot.pos.basewidth_going_east = Some( leaves[1].pos.basewidth_going_east.unwrap() );
+                        slot.pos.h = Some( cmp::max(leaves[0].pos.h.unwrap(), leaves[1].pos.h.unwrap()) + 2);
+                        slot.pos.tipwidth_going_east = Some( slot.pos.basewidth_going_east.unwrap() - slot.pos.h.unwrap() +1 ); 
+                        slot.pos.tipwidth_going_west = Some( slot.pos.basewidth_going_west.unwrap() - slot.pos.h.unwrap() +1 ); 
+                        slot.pos.branch_type = Some(BranchType::Trapezoid);
+                        println!("1time bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+            
+                        leaves[0].pos.y = Some( -2 );
+                        leaves[1].pos.y = Some( -2 );
+                        leaves[0].pos.x = Some( -d_between_centers );
+                        leaves[1].pos.x = Some( 0 );
+                        
 
                     } else { // n times
 
-                        // expr leaves
-                        let exprw = mslot.leaves[1].pos.width.unwrap();
-                        let n_expr_leaves = mslot.leaves.len() - 1;
-                        let exprwtot = exprw * (n_expr_leaves as i32) +(n_expr_leaves as i32 - 1)  - (exprw -1) ;
+                        let leaves = &mut mslot.leaves;
+                        // for each pair of leaves
+                        let tip_width_left_1 = leaves[1].pos.tipwidth_going_east.unwrap();
+                        let tip_width_right_1 = leaves[2].pos.tipwidth_going_west.unwrap();
+                        let hmin = cmp::min(leaves[1].pos.h.unwrap(), leaves[2].pos.h.unwrap());
+                        let d1 = tip_width_left_1+1 + tip_width_right_1+1 + 2*(hmin-1) + MIN_SPACING;
+            
+
+
+                        let n_expr_leaves = leaves.len() - 1;
+                        let exprwtot = d1 * (n_expr_leaves as i32) + ((n_expr_leaves as i32 -1 )*MIN_SPACING )  - (d1 -1) ;
                         // Source(s): dude trust me
+
+                        // expr leaves pos
                         let mut xcount = - exprwtot/2;
                         println!("exprwtot {}", exprwtot);
-                        println!("exprw {}", exprw);
+                        println!("exprw {}", d1);
                         for j in 1..(n_expr_leaves +1 ) {
                             
-                            mslot.leaves[j].pos.x = Some( xcount);
-                            mslot.leaves[j].pos.y = Some( -4 );
+                            leaves[j].pos.x = Some( xcount);
+                            leaves[j].pos.y = Some( -4 );
                             println!("xcount {}", xcount);
-                            xcount += exprw + 1;
+                            xcount += d1 + MIN_SPACING;
                         }
+                        // times leaf pos
+                        let tip_width_left_2 = leaves[0].pos.tipwidth_going_east.unwrap();
+                        let tip_width_right_2 = leaves[1].pos.tipwidth_going_west.unwrap();
+                        let hmin = cmp::min(leaves[0].pos.h.unwrap(), leaves[1].pos.h.unwrap());
+                        let d2 = tip_width_left_2 +1 + tip_width_right_2 +1 + 2*(hmin-1) + MIN_SPACING;
 
-                        // times leaf
-                        let timesw = mslot.leaves[0].pos.width.unwrap();
+                        leaves[0].pos.x = Some( -exprwtot/2 - d2 - MIN_SPACING);
+                        leaves[0].pos.y = Some( -4 );
+                        
+                        // widths
+                        slot.pos.h = Some( cmp::max(leaves[0].pos.h.unwrap(), leaves[1].pos.h.unwrap()) + 2);
+                       
+                        slot.pos.tipwidth_going_east = Some( exprwtot/2 + leaves[1].pos.tipwidth_going_east.unwrap() + 1);
+                        slot.pos.basewidth_going_east = Some( exprwtot/2 + leaves[1].pos.basewidth_going_east.unwrap() + 1);
 
-                        let wstar = cmp::min(exprwtot, timesw);
-                        let astar = wstar + 1 ;
+                        slot.pos.tipwidth_going_west = Some( exprwtot/2 + d2 + leaves[0].pos.tipwidth_going_west.unwrap() + 1 );
+                        slot.pos.basewidth_going_west = Some( exprwtot/2 + d2 + leaves[0].pos.basewidth_going_west.unwrap() + 1);
+                        slot.pos.branch_type = Some(BranchType::TimesN);
 
-                        mslot.leaves[0].pos.x = Some( -exprwtot/2 -astar -1);
-                        mslot.leaves[0].pos.y = Some( -4 );
-
-                        slot.pos.width = Some( exprwtot + timesw*2 + 10  );
                     }
                     
 
-
-
                 }
             }
+
+            ////////////////////
         }
         
     }
@@ -432,11 +549,12 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
     set_pos(startslot);
     eprintln!("set_pos successful");
 
-    let mut v = vec![vec!['.'; 150]; 30];
+    //size array
+    let mut v = vec![vec![' '; 150]; 35];
     let startx = 75;
-    let starty = 29;
+    let starty = 35 - 1;
 
-    fn dive(slot: &Box<NodeSlot>, v: &mut Vec<Vec<char>>, lastx: i32, lasty: i32, lastchar: char, left: bool, lastwasbin: bool) {
+    fn dive(slot: &Box<NodeSlot>, v: &mut Vec<Vec<char>>, lastx: i32, lasty: i32, ) {
         let this_rel_x = slot.pos.x.unwrap();
         let this_rel_y = slot.pos.y.unwrap();
 
@@ -459,11 +577,11 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
         }
         
 
-        let mut lchar = ' ';
+
         match &slot.node {
             NodeType::Binary(a) => {
 
-                lchar = match a.binode {
+                let lchar = match a.binode {
                     BinaryNodeType::Addition(_) => '+',
                     BinaryNodeType::Subtraction(_) => '-',
                     BinaryNodeType::Multiplication(_) => '*',
@@ -471,6 +589,32 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
                     BinaryNodeType::DiceRoll(_) => 'd',
                     BinaryNodeType::Hit(_) => 'h',
                 };
+
+                let leftleaf_y = a.leftleaf.pos.y.unwrap();
+                v[(newy + leftleaf_y) as usize][(newx) as usize] =  lchar;
+
+
+                match slot.pos.branch_type {
+                    Some( BranchType::Cone ) => {
+                        for l in 1..( leftleaf_y.abs() ) {
+                            v[(newy - l) as usize][(newx - l ) as usize] = '\\';
+                            v[(newy - l) as usize][(newx + l ) as usize] = '/';
+                        }
+
+                    }
+
+                    Some(BranchType::Trapezoid) => {
+                        let leftleaf_x = a.leftleaf.pos.x.unwrap();
+
+                        for j in (-leftleaf_x.abs() + 2)..=(leftleaf_x.abs() - 2) { 
+                            v[(leftleaf_y + newy + 2) as usize][(j + newx) as usize] = '‐'; // '—'
+                        }
+                        v[(leftleaf_y + newy + 1) as usize][( leftleaf_x + newx + 1) as usize] = '\\';
+                        v[(leftleaf_y + newy + 1) as usize][( -leftleaf_x + newx - 1) as usize] = '/';
+                        v[(newy - 1) as usize][newx  as usize] =  '|';
+                    }
+                    _ => {}
+                }
 
 
             },
@@ -518,7 +662,7 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
                     v[(newy - 1) as usize][newx  as usize] =  '|';
 
                 } else if mnode.leaves.len() == 1 {
-                    println!("nigger baka 420")
+                    ///////////
                 }
 
 
@@ -526,30 +670,31 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
             },
         }
 
-        if lastwasbin == true {
-            let length_of_arm =  i32::abs(newx - lastx);
-            if left == true {
-                for l in 1..(length_of_arm) {
-                    v[(newy + l) as usize][(newx + l ) as usize] = '\\';
-                }
-                v[(newy) as usize][(lastx) as usize] =  lastchar;
-            } else {
-                for l in 1..(length_of_arm) {
-                    v[(newy + l) as usize][(newx - l ) as usize] = '/';
-                }
-            }
-        }
+
+        // if lastwasbin == true {
+        //     let length_of_arm =  i32::abs(newx - lastx);
+        //     if left == true {
+        //         for l in 1..(length_of_arm) {
+        //             v[(newy + l) as usize][(newx + l ) as usize] = '\\';
+        //         }
+        //         v[(newy) as usize][(lastx) as usize] =  lastchar;
+        //     } else {
+        //         for l in 1..(length_of_arm) {
+        //             v[(newy + l) as usize][(newx - l ) as usize] = '/';
+        //         }
+        //     }
+        // }
 
         //recurs dive
         match &slot.node {
             NodeType::Zero(_) => {},
             NodeType::Binary(a) => {
-                dive(&a.leftleaf, v, newx, newy, lchar, true, true);
-                dive(&a.rightleaf, v, newx, newy, lchar, false, true);
+                dive(&a.leftleaf, v, newx, newy);
+                dive(&a.rightleaf, v, newx, newy);
             },
             NodeType::Many(b) => {
                 for j in &b.leaves {
-                    dive(&j, v, newx, newy, lchar, true, false);
+                    dive(&j, v, newx, newy);
                 }
             }
         }
@@ -557,7 +702,7 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
 
     startslot.pos.x = Some(0);
     startslot.pos.y = Some(0);
-    dive(&startslot, &mut v, startx, starty, ' ', false, false);
+    dive(&startslot, &mut v, startx, starty);
 
     return v;
 }
@@ -616,7 +761,7 @@ enum BinaryNodeType {
 }
 #[allow(dead_code)]
 enum ManyNodeType {
-    ManySum(ManySumNode),
+    // ManySum(ManySumNode),
     Times(TimesNode),
 }
 
@@ -632,7 +777,7 @@ struct HitNode { }
 
 // by convention: in TimesNode, the first leaf is the number of times, the rest are summed
 struct TimesNode { }
-struct ManySumNode { }
+// struct ManySumNode { }
 
 fn build_number(val: i32) -> NodeSlot {
     let innerinner = ZeroNodeType::Number( NumberNode{value: val} );
@@ -642,11 +787,18 @@ fn build_number(val: i32) -> NodeSlot {
     let w;
     if val < 99 {
         w = 1;
+    } else if val < 9999 {
+        w = 3;
     } else {
         w = val.to_string().len() + 2;
     }
     
-    let mut tmppos = EMPTYPOS; tmppos.width = Some(w as i32);
+    let mut tmppos = EMPTYPOS;
+    tmppos.tipwidth_going_east = Some(w as i32 - 1);
+    tmppos.tipwidth_going_west = Some(w as i32 - 1);
+    tmppos.basewidth_going_east = Some(w as i32 - 1);
+    tmppos.basewidth_going_west = Some(w as i32 - 1);
+    tmppos.h = Some( 1 );
     return NodeSlot{ pos: tmppos, noderesult: Some(res), node: NodeType::Zero(inner) }
 }
 
@@ -685,9 +837,22 @@ struct DiceResult {
 struct NodePositionInfo { 
     x: Option<i32>, // relative to parent!
     y: Option<i32>,
-    width: Option<i32>, // width of downwards triangle that has this node as the bottom tip
+    tipwidth_going_west: Option<i32>, // width of tip of downwards trapezoid 
+    tipwidth_going_east: Option<i32>, // width of tip of downwards trapezoid 
+    basewidth_going_west: Option<i32>, // width of base of downwards trapezoid
+    basewidth_going_east: Option<i32>, // width of base of downwards trapezoid
+    h: Option <i32>,
+    branch_type: Option<BranchType>,
 }
-const EMPTYPOS: NodePositionInfo = NodePositionInfo{ x: None, y: None, width: None };
+enum BranchType {
+    Cone,
+    Trapezoid,
+    TimesZero,
+    TimesOne,
+    TimesN,
+}
+
+const EMPTYPOS: NodePositionInfo = NodePositionInfo{ x: None, y: None, tipwidth_going_west: None, tipwidth_going_east: None, basewidth_going_west: None, basewidth_going_east:None, h: None, branch_type: None};
 
 
 struct NumberStack {
