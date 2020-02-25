@@ -79,7 +79,7 @@ const SPLITTERS: [Token; 7] = [
 // from a string of tokens in which "splitter" is the one with top priority,
 // a node is built for the splitter token. its leaves will be built afterwards, by recursively parsing the 
 // remaining parts of the string, left and right of the splitter.
-fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Box<NodeSlot> {
+fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Result<Box<NodeSlot>, String> {
     
     
     // complex cases
@@ -88,16 +88,16 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Box<
         Token::DiceRoll => {
             // d6 is short for 1d6 
             let innerinner = BinaryNodeType::DiceRoll(DiceRollNode{});
-            let rightside = parse_expression(&vec[poz+1..]);
+            let rightside = parse_expression(&vec[poz+1..])?;
             let leftside;
             if poz == 0 {
                 leftside = Box::new(  build_number(1)  );
             } else {
-                leftside = parse_expression(&vec[0..poz]);
+                leftside = parse_expression(&vec[0..poz])?;
             }
 
             let inner = BinaryNodeSlot{ leftleaf: leftside, rightleaf: rightside, binode: innerinner, };
-            return Box::new( NodeSlot{ pos: EMPTYPOS, noderesult: None, node: NodeType::Binary(inner), } );
+            return Ok(Box::new( NodeSlot{ pos: EMPTYPOS, noderesult: None, node: NodeType::Binary(inner), } ));
         },
 
         Token::Times => {
@@ -121,7 +121,7 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Box<
                 expr_string = &vec[poz+1..];
             }
 
-            let mut n_times_leaf = parse_expression(n_times_string);
+            let mut n_times_leaf = parse_expression(n_times_string)?;
             fill(&mut n_times_leaf);
             let n_times = n_times_leaf.noderesult.unwrap().value;
 
@@ -129,13 +129,13 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Box<
             temp_v.push(n_times_leaf); 
 
             for _j in 0..n_times {
-                let jleaf = parse_expression(expr_string);
+                let jleaf = parse_expression(expr_string)?;
                 temp_v.push(jleaf);
             }
 
             let innerinner = ManyNodeType::Times(TimesNode{});
             let inner = ManyNodeSlot{ leaves: temp_v, manynode: innerinner };
-            return Box::new( NodeSlot{ pos: EMPTYPOS, noderesult: None, node: NodeType::Many(inner), } );
+            return Ok(Box::new( NodeSlot{ pos: EMPTYPOS, noderesult: None, node: NodeType::Many(inner), } ));
 
 
         }
@@ -147,8 +147,11 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Box<
     // simple cases, with the recursive parsing grouped outside of the match
     // it might a bad idea to put the parsing out of the match anyways,
     // because it still get called if the splitter is wrong!
-    let leftside = parse_expression(&vec[0..poz]);
-    let rightside = parse_expression(&vec[poz+1..]);
+    if vec[0..poz].len() == 0usize {
+
+    }
+    let leftside = parse_expression(&vec[0..poz])?;
+    let rightside = parse_expression(&vec[poz+1..])?;
     
     let innerinner;
     
@@ -172,7 +175,7 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Box<
     }
 
     let inner = BinaryNodeSlot{ leftleaf: leftside, rightleaf: rightside, binode: innerinner, };
-    return Box::new( NodeSlot{ pos: EMPTYPOS, noderesult: None, node: NodeType::Binary(inner), } );
+    return Ok(Box::new( NodeSlot{ pos: EMPTYPOS, noderesult: None, node: NodeType::Binary(inner), } ));
 
 
 
@@ -1034,7 +1037,7 @@ impl NumberStack {
     }
 }
 
-fn to_tokens(expr: &str) -> Vec<Token> { 
+fn to_tokens(expr: &str) -> Result<Vec<Token>, String> { 
     
     let mut res: Vec<Token> = Vec::with_capacity(50);
     let mut number_stack = NumberStack { number_stack: Vec::new(), };
@@ -1090,7 +1093,8 @@ fn to_tokens(expr: &str) -> Vec<Token> {
                     res.push( Token::Hit );
                     n += 2;
                 } else {
-                    panic!("character h not understood, did you mean \"hit\" ?")
+                    return Err("character h not understood, did you mean \"hit\" ?".to_string());
+                    // panic!("character h not understood, did you mean \"hit\" ?")
                 }
             },
 
@@ -1105,14 +1109,20 @@ fn to_tokens(expr: &str) -> Vec<Token> {
             '+' => { res.push( Token::Addition ); },
             '-' => { res.push( Token::Subtraction ); },
 
-            other => { panic!("character {} not understood", other); },
+            other => { 
+                let mut exit_str = "character ".to_string();
+                exit_str.push(other);
+                exit_str.push_str(" not understood");
+                return Err(exit_str); 
+            },
+            // other => { panic!("character {} not understood", other); },
         }
 
         n += 1;
     }
 
 
-    return res;
+    return Ok(res);
 }
 
 
@@ -1130,70 +1140,131 @@ fn clear_spaces(vec: &mut Vec<Token>) -> & Vec<Token> {
 }
 
 
-fn parse_expression(vec: &[Token]) -> Box<NodeSlot> {
-    // figure out if the expression is of the form (...)+(...),
-    // where (...) can also have no parentheses but a lower priority op, like in 4*5+4*5
-    // the case (...)+(...)+(...) works, but with two levels
-    // eprintln!("parsing {:?}", vec); //PARSING DEBUG
-    let mut par_balance: u8 = 0;
-    let mut position_of_splitter: Option<usize> = None;
-    'outer: for spl in &SPLITTERS{
-        for (n, x) in vec.iter().enumerate() {        
+fn parse_expression(vec: &[Token]) -> Result<Box<NodeSlot>, String> {
+    match vec.len() {
+        0 => {
+            let exit_str = format!("string not understood");
+            return Err(exit_str);
+        },
+        1 => {
+            if let Token::Number(i) = vec[0] {
+                return Ok(Box::new( build_number(i)   ));
+            }else{
+                let exit_str = format!("string not understood: found {:?} instead of a number", vec[0]);
+                return Err(exit_str);
+            }
+        },
+        _n => {
 
-            match x {
-                Token::LeftPar => par_balance += 1,
-                Token::RightPar => par_balance -= 1,
-                other if other == spl => {
+            let mut par_balance: u8 = 0;
+            let mut position_of_splitter: Option<usize> = None;
+            'outer: for spl in &SPLITTERS{
+                for (n, x) in vec.iter().enumerate() {        
 
-                    if par_balance == 0 {
+                    match x {
+                        Token::LeftPar => par_balance += 1,
+                        Token::RightPar => par_balance -= 1,
+                        other if other == spl => {
 
-                        position_of_splitter = Some(n);
-                        break 'outer;
+                            if par_balance == 0 {
+
+                                position_of_splitter = Some(n);
+                                break 'outer;
+                            }
+                        }
+                        _ => {},              
+                    
                     }
                 }
-                _ => {},              
-            
             }
-        }
-    }
-    // if no splitter is found at zero par balance, we have 3 cases: 
-    // a number (base case)
-    // just (...), thus we parse recursively the ... without the parentheses
-    // an expression without parentheses
 
-    if let None = position_of_splitter {
+            if let None = position_of_splitter {
         
-        // single number case
-        if vec.len() == 1 {
-            // eprintln!("no splitter found, single number!"); //PARSING DEBUG
-            let temp;
-            if let Token::Number(i) = vec[0] {
-                temp = i;
-            }else{
-                panic!("lol");
-            }
-            return Box::new( build_number(temp)   );
-
-        } else {
-            // eprintln!("no splitter found, got to clear parentheses maybe"); //PARSING DEBUG
-
-            if let Token::LeftPar = vec[0] { 
-                return parse_expression(&vec[1..vec.len()-1]);
+                if let Token::LeftPar = vec[0] { 
+                    // eprintln!("no splitter found, got to clear parentheses maybe"); //PARSING DEBUG
+                    return parse_expression(&vec[1..vec.len()-1]);
+                } else {
+                    let exit_str = format!("sequence {:?} not understood", vec);
+                    return Err(exit_str);
+                }
+        
             } else {
-                return parse_expression(&vec);
+                let poz = position_of_splitter.unwrap();
+                let splitter = &vec[poz];
+        
+        
+                return Ok( build_node_from_splitter(vec, splitter, poz)?  );
+        
+        
             }
+
 
         }
-
-    } else {
-        let poz = position_of_splitter.unwrap();
-        let splitter = &vec[poz];
-
-
-        return build_node_from_splitter(vec, splitter, poz);
-
-
     }
+
+
+
+    // // figure out if the expression is of the form (...)+(...),
+    // // where (...) can also have no parentheses but a lower priority op, like in 4*5+4*5
+    // // the case (...)+(...)+(...) works, but with two levels
+    // // eprintln!("parsing {:?}", vec); //PARSING DEBUG
+    // let mut par_balance: u8 = 0;
+    // let mut position_of_splitter: Option<usize> = None;
+    // 'outer: for spl in &SPLITTERS{
+    //     for (n, x) in vec.iter().enumerate() {        
+
+    //         match x {
+    //             Token::LeftPar => par_balance += 1,
+    //             Token::RightPar => par_balance -= 1,
+    //             other if other == spl => {
+
+    //                 if par_balance == 0 {
+
+    //                     position_of_splitter = Some(n);
+    //                     break 'outer;
+    //                 }
+    //             }
+    //             _ => {},              
+            
+    //         }
+    //     }
+    // }
+    // // if no splitter is found at zero par balance, we have 3 cases: 
+    // // a number (base case)
+    // // just (...), thus we parse recursively the ... without the parentheses
+    // // an expression without parentheses
+
+    // if let None = position_of_splitter {
+        
+    //     // single number case
+    //     if vec.len() == 1 {
+    //         // eprintln!("no splitter found, single number!"); //PARSING DEBUG
+    //         let temp;
+    //         if let Token::Number(i) = vec[0] {
+    //             temp = i;
+    //         }else{
+    //             panic!("lol");
+    //         }
+    //         return Ok(Box::new( build_number(temp)   ));
+
+    //     } else if let Token::LeftPar = vec[0] { 
+    //         // eprintln!("no splitter found, got to clear parentheses maybe"); //PARSING DEBUG
+    //         return parse_expression(&vec[1..vec.len()-1]);
+    //     } else {
+    //         return Err("malformed string".to_string());
+    //     }
+
+        
+
+    // } else {
+    //     let poz = position_of_splitter.unwrap();
+    //     let splitter = &vec[poz];
+
+
+    //     return Ok(build_node_from_splitter(vec, splitter, poz));
+
+
+    // }
 
 }
 
@@ -1203,14 +1274,25 @@ fn parse_expression(vec: &[Token]) -> Box<NodeSlot> {
 use std::io::{self};
 
 fn parsedice(dice_expr :&Vec<Token>) {
-    let mut mola = parse_expression(dice_expr);
-    fill(&mut mola);
-    //println!("result: {}", mola.noderesult.unwrap().value);
+    match &mut parse_expression(dice_expr) {
+        Ok(mola) => {
+            fill(mola);
+            //println!("result: {}", mola.noderesult.unwrap().value);
+        
+            let arr = draw_2d_vec(mola);
+            print_2d_vec(arr);
+        
+            println!("result: {}", mola.noderesult.unwrap().value);
+        },
 
-    let arr = draw_2d_vec(&mut mola);
-    print_2d_vec(arr);
+        Err(err) => {
+            println!("{}", err);
+        }
 
-    println!("result: {}", mola.noderesult.unwrap().value);
+
+    }
+
+
 }
 
 
@@ -1244,18 +1326,24 @@ fn main()  {
 
                 rl.add_history_entry(line.as_str());
                 let expression = line.trim();
-                let mut tokens = to_tokens(&expression);
-                let tokens = clear_spaces(&mut tokens);
+                let mut restokens = to_tokens(&expression);
+                match &mut restokens {
+                    Err(a) => println!("{}",a),
+                    Ok(b) => {
+                        let tokens = clear_spaces(b);
+        
+                        parsedice(tokens);
 
-                parsedice(tokens);
+                    },
+                }
+
 
             },
             Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C");
-                break
+                println!("Interrupt");
             },
             Err(ReadlineError::Eof) => {
-                println!("CTRL-D");
+                println!("Exit");
                 break
             },
             Err(err) => {
