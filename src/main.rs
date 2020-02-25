@@ -1,3 +1,9 @@
+extern crate term_size;
+extern crate rustyline;
+
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
+
 use rand::Rng;
 use std::char;
 use std::cmp;
@@ -103,7 +109,7 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Box<
             if vec[poz+1..].len() == 1 && vec[0..poz].len() != 1 {
                 if let Token::Number(num) = vec[poz+1] {
                     // n times is on the right
-                    println!("special case with number {} on the right", num);
+                    // eprintln!("special case with number {} on the right", num);
                     n_times_string = &vec[poz+1..];
                     expr_string = &vec[0..poz];
                 } else {
@@ -324,7 +330,7 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                     slot.pos.h = Some( cmp::max(left.pos.h.unwrap(), right.pos.h.unwrap()) + 2 );
                     slot.pos.branch_type = Some(BranchType::Cone);
 
-                    println!("cone1 bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+                    // eprintln!("cone1 bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
                 
                     left.pos.y = Some( -2 );
                     right.pos.y = Some( -2 );
@@ -351,7 +357,7 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                     slot.pos.h = Some( cmp::max(left.pos.h.unwrap(), right.pos.h.unwrap()) + 3 );
                     slot.pos.branch_type = Some(BranchType::Cone);
 
-                    println!("cone2 bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+                    // eprintln!("cone2 bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
 
 
                     left.pos.y = Some( -3 );
@@ -378,7 +384,7 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
             slot.pos.tipwidth_going_east = Some( slot.pos.basewidth_going_east.unwrap() - slot.pos.h.unwrap() +1 ); 
             slot.pos.tipwidth_going_west = Some( slot.pos.basewidth_going_west.unwrap() - slot.pos.h.unwrap() +1 ); 
             slot.pos.branch_type = Some(BranchType::Trapezoid);
-            println!("trapezoid bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+            // eprintln!("trapezoid bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
 
             left.pos.y = Some( -4 );
             right.pos.y = Some( -4 );
@@ -443,7 +449,7 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                 ManyNodeType::Times(_) => {
                     
 
-                    println!("baa baa mslot.leaves.len() {}", mslot.leaves.len());
+                    // eprintln!("baa baa mslot.leaves.len() {}", mslot.leaves.len());
                     if mslot.leaves.len() == 1 { // zero times
 
                         let lonenode = &mut mslot.leaves[0];
@@ -454,7 +460,7 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                         slot.pos.tipwidth_going_west = Some( lonenode.pos.tipwidth_going_west.unwrap() -3 );
                         slot.pos.tipwidth_going_east = Some( lonenode.pos.tipwidth_going_east.unwrap() -3 );
                         slot.pos.h = Some( lonenode.pos.h.unwrap() + 3 );
-                        println!("0time bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+                        // eprintln!("0time bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
 
 
                         // maybe bug with tip width like for cone2
@@ -476,7 +482,7 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                         slot.pos.tipwidth_going_east = Some( slot.pos.basewidth_going_east.unwrap() - slot.pos.h.unwrap() +1 ); 
                         slot.pos.tipwidth_going_west = Some( slot.pos.basewidth_going_west.unwrap() - slot.pos.h.unwrap() +1 ); 
                         slot.pos.branch_type = Some(BranchType::Trapezoid);
-                        println!("1time bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+                        // eprintln!("1time bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
             
                         leaves[0].pos.y = Some( -2 );
                         leaves[1].pos.y = Some( -2 );
@@ -501,13 +507,13 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
 
                         // expr leaves pos
                         let mut xcount = - exprwtot/2;
-                        println!("exprwtot {}", exprwtot);
-                        println!("exprw {}", d1);
+                        // eprintln!("exprwtot {}", exprwtot);
+                        // eprintln!("exprw {}", d1);
                         for j in 1..(n_expr_leaves +1 ) {
                             
                             leaves[j].pos.x = Some( xcount);
                             leaves[j].pos.y = Some( -4 );
-                            println!("xcount {}", xcount);
+                            // eprintln!("xcount {}", xcount);
                             xcount += d1 + MIN_SPACING;
                         }
                         // times leaf pos
@@ -542,41 +548,152 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
 
 }
 
+struct MaxVals {
+    max_x: i32,
+    min_x: i32,
+    min_y: i32,
+}
+
+// overwrite x and y as absolute pos and returns max_x min_x min_y
+// has to be called right after setpos
+fn set_pos_abs( mut startslot: &mut Box<NodeSlot> ) -> MaxVals {
+
+    let mut max = MaxVals{ max_x: startslot.pos.x.unwrap(), 
+        min_x: startslot.pos.x.unwrap(),
+        min_y: startslot.pos.y.unwrap(), };
+
+    let startx = 0;
+    let starty = 0;
+    startslot.pos.x = Some(0);
+    startslot.pos.y = Some(0);
+    dive2(&mut startslot, startx, starty, &mut max);
+
+    fn dive2(slot: &mut Box<NodeSlot>, lastx: i32, lasty: i32, max: &mut MaxVals) {
+
+        let this_rel_x = slot.pos.x.unwrap();
+        let this_rel_y = slot.pos.y.unwrap();
+    
+        let newx = lastx + this_rel_x;
+        let newy = lasty + this_rel_y;
+
+        if newx > max.max_x { max.max_x = newx; } 
+        else if newx < max.min_x { max.min_x = newx; }
+
+        if newy < max.min_y { max.min_y = newy; } 
+
+        slot.pos.x = Some( newx );
+        // eprintln!("newx {} ", newx);
+        slot.pos.y = Some( newy );
+        // eprintln!("newy {} ", newy);
+
+        //recurs dive
+        match &mut slot.node {
+            NodeType::Zero(_) => {},
+            NodeType::Binary(a) => {
+                
+                dive2(&mut a.leftleaf, newx, newy, max);
+                dive2(&mut a.rightleaf, newx, newy, max);
+            },
+            NodeType::Many(b) => {
+                for mut j in &mut b.leaves {
+                    dive2(&mut j, newx, newy, max);
+                }
+            }
+        }
+    }
+
+    return max;
+
+} 
+
+
+// traslate everything by fix amount on x and y
+fn trasl( mut slot: &mut Box<NodeSlot>, xtrasl: i32, ytrasl: i32  ) {
+
+    let oldx = slot.pos.x.unwrap();
+    slot.pos.x = Some( oldx + xtrasl );
+    // eprintln!("traslated x {} ", oldx + xtrasl );
+    let oldy = slot.pos.y.unwrap();
+    slot.pos.y = Some( oldy +    ytrasl );
+    // eprintln!("traslated y {} ", oldy + ytrasl );
+
+    //recurs
+    match &mut slot.node {
+        NodeType::Zero(_) => {},
+        NodeType::Binary(a) => {
+            
+            trasl(&mut a.leftleaf, xtrasl, ytrasl);
+            trasl(&mut a.rightleaf, xtrasl, ytrasl);
+        },
+        NodeType::Many(b) => {
+            for mut j in &mut b.leaves {
+                trasl(&mut j, xtrasl, ytrasl);
+            }
+        }
+    }
+}
+
+
 
 
 fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
 
     set_pos(startslot);
-    eprintln!("set_pos successful");
+    startslot.pos.x = Some(0);
+    startslot.pos.y = Some(0);
 
-    //size array
-    let mut v = vec![vec![' '; 150]; 35];
-    let startx = 75;
-    let starty = 35 - 1;
+    let max = set_pos_abs(startslot);
+    // println!("max x {}", max.max_x);
+    // println!("min x {}", max.min_x);
+    // println!("max y {}", max.min_y);
 
-    fn dive(slot: &Box<NodeSlot>, v: &mut Vec<Vec<char>>, lastx: i32, lasty: i32, ) {
-        let this_rel_x = slot.pos.x.unwrap();
-        let this_rel_y = slot.pos.y.unwrap();
+    let full_w = (max.max_x - max.min_x) +1 ;
 
-        // let this_w = slot.pos.width.unwrap();
+    const XLEFTPAD: usize = 4;
+    const XRIGHTPAD: usize = 4;
+    const YUPPAD: usize = 1;
+    const YDOWNPAD: usize = 1;
+    // let mut v = vec![vec![' '; 150   ]; 35];
     
-        let newx = lastx + this_rel_x;
-        let newy = lasty + this_rel_y;
+    let vxsize = full_w as usize + XLEFTPAD + XRIGHTPAD;
+    let vysize = max.min_y.abs() as usize + YUPPAD + YDOWNPAD + 1; 
+    let mut v = vec![vec![' '; vxsize +1 ]; vysize];
+    // eprintln!("vxsize {}", vxsize);
+    // eprintln!("vysize {}", vysize);
+
+    // trasl(startslot, 75 , 35-1);
+    trasl(startslot, -max.min_x  + XLEFTPAD as i32 , -max.min_y + YUPPAD as i32 );
+
+
+
+    write(&startslot, &mut v);
+    return v;
+
+
+
+    fn write(slot: &Box<NodeSlot>, v: &mut Vec<Vec<char>>, ) {  
+        let newx = slot.pos.x.unwrap();
+        let newy = slot.pos.y.unwrap();
+
+        // eprintln!("writing x {} ", newx);
+        // eprintln!("writing y {} ", newy);
 
         let mut number = slot.noderesult.unwrap().value;
         if number < 0 {
             v[(newy) as usize][(newx) as usize - 1] =  '-';
+            // eprintln!("minus x {} ", newx -1);
+            // eprintln!("minus y {} ", newy);
+
             number = -number;
         }
 
         let offset = (number.to_string().len() / 2) as usize;
         for (i, digit) in number.to_string().chars().enumerate() {
-            // println!("{:?}", slot.pos.width);
-            // let nchar = char::from_digit(digit as u32, 10u32).unwrap();
             v[(newy) as usize][(newx + (i  as i32)) as usize - offset] =  digit;
+            // eprintln!("digits x {} ", (newx + (i  as i32)) as usize - offset);
+            // eprintln!("digits y {} ", newy);
         }
         
-
 
         match &slot.node {
             NodeType::Binary(a) => {
@@ -591,12 +708,21 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
                 };
 
                 let leftleaf_y = a.leftleaf.pos.y.unwrap();
-                v[(newy + leftleaf_y) as usize][(newx) as usize] =  lchar;
+                // eprintln!("lchar x {} ", newx);
+                // eprintln!("lchar y {} ", leftleaf_y);
+                v[(leftleaf_y) as usize][(newx) as usize] =  lchar;
 
 
                 match slot.pos.branch_type {
+                    
                     Some( BranchType::Cone ) => {
-                        for l in 1..( leftleaf_y.abs() ) {
+                        let templen = (newy - leftleaf_y).abs();
+                        for l in 1..( templen ) {
+
+                            // eprintln!("\\ x {} ", newx - l );
+                            // eprintln!("/ y {} ", newy - l);
+                            // eprintln!("\\ x {} ", newy - l );
+                            // eprintln!("/ y {} ", newx + l);
                             v[(newy - l) as usize][(newx - l ) as usize] = '\\';
                             v[(newy - l) as usize][(newx + l ) as usize] = '/';
                         }
@@ -605,12 +731,15 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
 
                     Some(BranchType::Trapezoid) => {
                         let leftleaf_x = a.leftleaf.pos.x.unwrap();
+                        let rightleaf_x = a.rightleaf.pos.x.unwrap();
+                        // eprintln!("tr x {} ", leftleaf_x );
 
-                        for j in (-leftleaf_x.abs() + 2)..=(leftleaf_x.abs() - 2) { 
-                            v[(leftleaf_y + newy + 2) as usize][(j + newx) as usize] = '‐'; // '—'
+
+                        for j in (leftleaf_x.abs() + 2)..=(rightleaf_x.abs() - 2) { 
+                            v[(leftleaf_y + 2) as usize][(j) as usize] = '‐'; // '—'
                         }
-                        v[(leftleaf_y + newy + 1) as usize][( leftleaf_x + newx + 1) as usize] = '\\';
-                        v[(leftleaf_y + newy + 1) as usize][( -leftleaf_x + newx - 1) as usize] = '/';
+                        v[(leftleaf_y + 1) as usize][( leftleaf_x + 1) as usize] = '\\';
+                        v[(leftleaf_y + 1) as usize][( rightleaf_x - 1) as usize] = '/';
                         v[(newy - 1) as usize][newx  as usize] =  '|';
                     }
                     _ => {}
@@ -624,10 +753,10 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
                 let tnodex = mnode.leaves[0].pos.x.unwrap();
                 let tnodey = mnode.leaves[0].pos.y.unwrap();
                 // v[(tnodey + newy + 1) as usize][(tnodex + newx) as usize] = '|';
-                v[(tnodey + newy ) as usize][(tnodex + newx  + 2) as usize] = '-';
-                v[(tnodey + newy ) as usize][(tnodex + newx  + 3) as usize] = '>';
+                v[( tnodey ) as usize][( tnodex  + 2) as usize] = '-';
+                v[( tnodey ) as usize][( tnodex  + 3) as usize] = '>';
 
-                v[(tnodey + newy) as usize][(tnodex + newx - 2) as usize] = 'x';
+                v[( tnodey) as usize][( tnodex - 2) as usize] = 'x';
 
                 
                 
@@ -639,17 +768,17 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
                     let westernmost_k = mnode.leaves.len() - 1;
 
                     for j in (first_node_x + 2)..(last_node_x - 2) { 
-                        v[(tnodey + newy + 2) as usize][(j + newx) as usize] = '‐'; // '—'
+                        v[(tnodey + 2) as usize][(j) as usize] = '‐'; // '—'
                     }
 
                     let spx = mnode.leaves[1].pos.x.unwrap();
-                    v[(tnodey + newy + 1) as usize][(spx + newx + 1) as usize] = '\\';
+                    v[(tnodey + 1) as usize][(spx + 1) as usize] = '\\';
                     let spx2 = mnode.leaves[westernmost_k].pos.x.unwrap();
-                    v[(tnodey + newy + 1) as usize][(spx2 + newx - 1) as usize] = '/';
+                    v[(tnodey + 1) as usize][(spx2 - 1) as usize] = '/';
 
                     for k in 2..(westernmost_k) {
                         let cx = mnode.leaves[k].pos.x.unwrap();
-                        v[(tnodey + newy + 1) as usize][(cx + newx) as usize] = '|';
+                        v[(tnodey + 1) as usize][(cx) as usize] = '|';
                     }
 
                     v[(newy - 1) as usize][newx  as usize] =  '|';
@@ -657,7 +786,7 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
                 } else if mnode.leaves.len() == 2 {
 
                     let cx = mnode.leaves[1].pos.x.unwrap();
-                    v[(tnodey + newy + 1) as usize][(cx + newx) as usize] = '|';
+                    v[(tnodey + 1) as usize][(cx) as usize] = '|';
 
                     v[(newy - 1) as usize][newx  as usize] =  '|';
 
@@ -685,38 +814,68 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
         //     }
         // }
 
-        //recurs dive
+        //recurs write
         match &slot.node {
             NodeType::Zero(_) => {},
             NodeType::Binary(a) => {
-                dive(&a.leftleaf, v, newx, newy);
-                dive(&a.rightleaf, v, newx, newy);
+                write(&a.leftleaf, v, );
+                write(&a.rightleaf, v, );
             },
             NodeType::Many(b) => {
                 for j in &b.leaves {
-                    dive(&j, v, newx, newy);
+                    write(&j, v, );
                 }
             }
         }
     }
 
-    startslot.pos.x = Some(0);
-    startslot.pos.y = Some(0);
-    dive(&startslot, &mut v, startx, starty);
 
-    return v;
 }
 
+
 fn print_2d_vec(v: Vec<Vec<char>>) {
-    for i in v {
-        for j in i {
-            print!("{}",j);
+    
+    let termw = get_term_width();
+    // eprintln!("termw {}", termw);
+    let xlen = v[0].len();
+    // eprintln!("xlen {}", xlen);
+    // eprintln!("xlen/termw {}", xlen/termw);
+
+    if xlen > termw {
+        for n in 0..(xlen/termw){
+
+
+            for i in 0..v.len() {
+                for j in n*termw..(n+1)*termw {
+                    print!("{}",v[i][j]);
+                }
+                print!("\n");
+            }
+        }
+
+    }
+
+
+    for i in 0..v.len() {
+        for j in (xlen/termw)*termw..(xlen) {
+            // println!("i {} j {}", i,j);
+            print!("{}",v[i][j]);
         }
         print!("\n");
     }
+   
 }
 
-
+fn get_term_width() -> usize {
+    let term_width;
+    if let Some((w, h)) = term_size::dimensions() {
+        term_width = w;
+    } else {
+    println!("Unable to get term size :(");
+    term_width = 80;
+    }
+    return term_width;
+}
 // LITERAL TYPE THEORY
 
 
@@ -1043,33 +1202,70 @@ fn parse_expression(vec: &[Token]) -> Box<NodeSlot> {
 
 use std::io::{self};
 
-// fn parse(expr: &str) -> Box<NodeSlot> {
-//     return parse_expression(clear_spaces(&mut to_tokens(expr)));
-// }
+fn parsedice(dice_expr :&Vec<Token>) {
+    let mut mola = parse_expression(dice_expr);
+    fill(&mut mola);
+    //println!("result: {}", mola.noderesult.unwrap().value);
+
+    let arr = draw_2d_vec(&mut mola);
+    print_2d_vec(arr);
+
+    println!("result: {}", mola.noderesult.unwrap().value);
+}
 
 
 fn main()  {
 
-    loop {    let mut expression = String::new();
-        match io::stdin().read_line(&mut expression) {
-            Ok(_n) => {
+    // loop {    let mut expression = String::new();
+    //     match io::stdin().read_line(&mut expression) {
+    //         Ok(_n) => {
 
-            }
-            Err(error) => println!("error: {}", error),
-        }
-        let expression = expression.trim();
-        let mut tokens = to_tokens(&expression);
-        let tokens = clear_spaces(&mut tokens);
-        // println!("{:?}", tokens);
-        let mut mola = parse_expression(&tokens);
-        fill(&mut mola);
-        println!("result: {}", mola.noderesult.unwrap().value);
+    //         }
+    //         Err(error) => println!("error: {}", error),
+    //     }
+    //     let expression = expression.trim();
+    //     let mut tokens = to_tokens(&expression);
+    //     let tokens = clear_spaces(&mut tokens);
+    //     // println!("{:?}", tokens);
+    //     parsedice(tokens);
 
-        let arr = draw_2d_vec(&mut mola);
-        print_2d_vec(arr);
         
-    }
+    // }
 
+ // `()` can be used when no completer is required
+    let mut rl = Editor::<()>::new();
+    if rl.load_history("history.txt").is_err() {
+        println!("No previous history.");
+    }
+    loop {
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(line) => {
+
+                rl.add_history_entry(line.as_str());
+                let expression = line.trim();
+                let mut tokens = to_tokens(&expression);
+                let tokens = clear_spaces(&mut tokens);
+
+                parsedice(tokens);
+
+            },
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break
+            },
+            Err(ReadlineError::Eof) => {
+                println!("CTRL-D");
+                break
+            },
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break
+            }
+        }
+    }
+    rl.save_history("history.txt").unwrap();
+    
     // FREQUENCY TEST
     // let big_number = 100000;
     // let expression = "1d20";  // MAKE THE DICE SIZE MATCH THE VEC! LEN
