@@ -1,5 +1,26 @@
-fix rng
-decide rules and syntax for SPACES, pass, adv, reroll ... 
-error handling in parsing etc
-change display rules for decide
 
+put history file somewhere specific
+
+decide rules and syntax for SPACES, pass, adv, reroll ... 
+
+
+add negative numbers in input? ( ex "-1 + 1")
+
+change display rules for diceroll
+
+shell features
+
+fix waste of vertical space for case
+    2x2x2x2x2
+    and similar 
+
+maybe, better error handling (move checks to build_from_splitter in order to give better messages)
+
+fix rng -- done?
+
+fix display bug in case 
+    (1+1)+(1+1) | x 1 -- ok
+
+fix display bugs with stuff like 
+    1 x (1+1-(1+1)) -- should be good
+    1x(1+1) +1 -- should be good

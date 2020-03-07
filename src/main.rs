@@ -1,8 +1,9 @@
-extern crate term_size;
-extern crate rustyline;
+
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+
+
 
 use rand::Rng;
 use std::char;
@@ -79,7 +80,7 @@ const SPLITTERS: [Token; 7] = [
 // from a string of tokens in which "splitter" is the one with top priority,
 // a node is built for the splitter token. its leaves will be built afterwards, by recursively parsing the 
 // remaining parts of the string, left and right of the splitter.
-fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Result<Box<NodeSlot>, String> {
+fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize, rng: &mut rand::rngs::ThreadRng) -> Result<Box<NodeSlot>, String> {
     
     
     // complex cases
@@ -88,12 +89,12 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Resu
         Token::DiceRoll => {
             // d6 is short for 1d6 
             let innerinner = BinaryNodeType::DiceRoll(DiceRollNode{});
-            let rightside = parse_expression(&vec[poz+1..])?;
+            let rightside = parse_expression(&vec[poz+1..], rng)?;
             let leftside;
             if poz == 0 {
                 leftside = Box::new(  build_number(1)  );
             } else {
-                leftside = parse_expression(&vec[0..poz])?;
+                leftside = parse_expression(&vec[0..poz], rng)?;
             }
 
             let inner = BinaryNodeSlot{ leftleaf: leftside, rightleaf: rightside, binode: innerinner, };
@@ -107,7 +108,7 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Resu
             // except if A is a long expression and B is a single number, like in (4d6 + 5)x3: 
             // in this care it's B copies of A (3 copies of the parenthesis).
             if vec[poz+1..].len() == 1 && vec[0..poz].len() != 1 {
-                if let Token::Number(num) = vec[poz+1] {
+                if let Token::Number(_num) = vec[poz+1] {
                     // n times is on the right
                     // eprintln!("special case with number {} on the right", num);
                     n_times_string = &vec[poz+1..];
@@ -121,15 +122,15 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Resu
                 expr_string = &vec[poz+1..];
             }
 
-            let mut n_times_leaf = parse_expression(n_times_string)?;
-            fill(&mut n_times_leaf);
+            let mut n_times_leaf = parse_expression(n_times_string, rng)?;
+            fill(&mut n_times_leaf, rng);
             let n_times = n_times_leaf.noderesult.unwrap().value;
 
             let mut temp_v = Vec::with_capacity(n_times as usize + 1);
             temp_v.push(n_times_leaf); 
 
             for _j in 0..n_times {
-                let jleaf = parse_expression(expr_string)?;
+                let jleaf = parse_expression(expr_string, rng)?;
                 temp_v.push(jleaf);
             }
 
@@ -150,8 +151,8 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Resu
     if vec[0..poz].len() == 0usize {
 
     }
-    let leftside = parse_expression(&vec[0..poz])?;
-    let rightside = parse_expression(&vec[poz+1..])?;
+    let leftside = parse_expression(&vec[0..poz], rng)?;
+    let rightside = parse_expression(&vec[poz+1..], rng)?;
     
     let innerinner;
     
@@ -181,7 +182,7 @@ fn build_node_from_splitter(vec: &[Token], splitter: &Token, poz: usize) -> Resu
 
 }
 
-fn fill(slot: &mut Box<NodeSlot>) {
+fn fill(slot: &mut Box<NodeSlot>, rng: &mut rand::rngs::ThreadRng) {
     match &mut slot.node {
         NodeType::Binary(a) => {
 
@@ -189,8 +190,8 @@ fn fill(slot: &mut Box<NodeSlot>) {
             let left = &mut a.leftleaf;
             let right = &mut a.rightleaf;
 
-            if left.noderesult == None {  fill(left); }
-            if right.noderesult == None {  fill(right);  }
+            if left.noderesult == None {  fill(left, rng); }
+            if right.noderesult == None {  fill(right, rng);  }
 
             let leftres = left.noderesult.unwrap(); // unwrap checks can be done here
             let rightres = right.noderesult.unwrap();
@@ -224,7 +225,7 @@ fn fill(slot: &mut Box<NodeSlot>) {
                     let mut n = 0;
                     let imax = leftres.value;
                     for _i in 0..imax {
-                        n += rand::thread_rng().gen_range(1, rightres.value + 1);
+                        n += rng.gen_range(1, rightres.value + 1);
                     }
                     let crit;
                     if rightres.value == 20 && n == 20 {
@@ -284,7 +285,7 @@ fn fill(slot: &mut Box<NodeSlot>) {
                     
                     let mut res = 0;
                     for j in &mut mslot.leaves[1..] {
-                        if j.noderesult == None {  fill(j); }
+                        if j.noderesult == None {  fill(j, rng); }
                         let jres = j.noderesult.unwrap();
                         res += jres.value;
                     }
@@ -333,7 +334,7 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                     slot.pos.h = Some( cmp::max(left.pos.h.unwrap(), right.pos.h.unwrap()) + 2 );
                     slot.pos.branch_type = Some(BranchType::Cone);
 
-                    // eprintln!("cone1 bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+                    eprintln!("cone1 bw_east {} tw_east {} bw_west {} tw_west {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_east.unwrap(),slot.pos.basewidth_going_west.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
                 
                     left.pos.y = Some( -2 );
                     right.pos.y = Some( -2 );
@@ -344,7 +345,7 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                 // if one is a small cone:
                 } else if left.pos.h.unwrap() == 3 || right.pos.h.unwrap() == 3 {
 
-                    // WARNING: if this special case is taken off, a bug will often appear
+                    // WARNING: IF this special case is taken off, a bug will often appear
                     // where the trapezoid's tip goes too far down and out of the usual space
                     // that means the usual relation between the 2 widths and h is not valid anymore
                     // and that causes the trees to overlap
@@ -360,7 +361,7 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                     slot.pos.h = Some( cmp::max(left.pos.h.unwrap(), right.pos.h.unwrap()) + 3 );
                     slot.pos.branch_type = Some(BranchType::Cone);
 
-                    // eprintln!("cone2 bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+                    eprintln!("cone2 bw_east {} tw_east {} bw_west {} tw_west {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_east.unwrap(),slot.pos.basewidth_going_west.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
 
 
                     left.pos.y = Some( -3 );
@@ -374,40 +375,39 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
             // general case: trapezoid => trapezoid
             // TODO think about adding a min size in case the trapezoid gets bugged (as described above)
             
-            let tip_width_left = left.pos.tipwidth_going_east.unwrap();
-            let tip_width_right = right.pos.tipwidth_going_west.unwrap();
+            // let tip_width_left = left.pos.tipwidth_going_east.unwrap();
+            // let tip_width_right = right.pos.tipwidth_going_west.unwrap();
+            let mut tip_width_left = left.pos.tipwidth_going_east.unwrap();
+            if tip_width_left < 1  {
+                tip_width_left = 1 ;
+            }
+            
+            let mut tip_width_right = right.pos.tipwidth_going_west.unwrap();
+            if tip_width_right < 1  {
+                tip_width_right = 1 ;
+            }
+
             let hmin = cmp::min(left.pos.h.unwrap(), right.pos.h.unwrap());
             let d_between_centers = tip_width_left+1 + tip_width_right+1 + 2*(hmin-1) + MIN_SPACING;
 
-            // MAYBE +1?
             slot.pos.basewidth_going_west = Some( left.pos.basewidth_going_west.unwrap() + d_between_centers/2 );
             slot.pos.basewidth_going_east = Some( left.pos.basewidth_going_east.unwrap() + d_between_centers/2 );
 
             slot.pos.h = Some( cmp::max(left.pos.h.unwrap(), right.pos.h.unwrap()) + 4);
-            slot.pos.tipwidth_going_east = Some( slot.pos.basewidth_going_east.unwrap() - slot.pos.h.unwrap() +1 ); 
-            slot.pos.tipwidth_going_west = Some( slot.pos.basewidth_going_west.unwrap() - slot.pos.h.unwrap() +1 ); 
+            slot.pos.tipwidth_going_east = Some( slot.pos.basewidth_going_east.unwrap() - slot.pos.h.unwrap() +1 );
+            if slot.pos.tipwidth_going_east < Some(0) { slot.pos.tipwidth_going_east = Some(0)};
+
+            slot.pos.tipwidth_going_west = Some( slot.pos.basewidth_going_west.unwrap() - slot.pos.h.unwrap() +1 );
+            if slot.pos.tipwidth_going_west < Some(0) { slot.pos.tipwidth_going_east = Some(0)};
+             
             slot.pos.branch_type = Some(BranchType::Trapezoid);
-            // eprintln!("trapezoid bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+            eprintln!("trapezoid bw_east {} tw_east {} bw_west {} tw_west {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_east.unwrap(),slot.pos.basewidth_going_west.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
 
             left.pos.y = Some( -4 );
             right.pos.y = Some( -4 );
             left.pos.x = Some( -d_between_centers/2 );
             right.pos.x = Some( d_between_centers/2 );
             
-
-            // OLD ALGORYTHM for cones n stuff
-            // let leftbwidth = left.pos.basewidth.unwrap();
-            // let rightbwidth = right.pos.basewidth.unwrap();
-
-            // let wstar = cmp::min(leftbwidth, rightbwidth);
-            // let astar = (wstar + 1)/2 ;
-
-            // slot.pos.basewidth = Some( leftbwidth + rightbwidth + 1 );
-            
-            // left.pos.x = Some(0 - astar );
-            // right.pos.x = Some(astar );
-            // left.pos.y = Some(0 - astar );
-            // right.pos.y = Some(0 - astar );
 
 
         }
@@ -461,9 +461,12 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                         slot.pos.basewidth_going_west = Some( lonenode.pos.basewidth_going_west.unwrap() );
                         slot.pos.basewidth_going_east = Some( lonenode.pos.basewidth_going_east.unwrap() );
                         slot.pos.tipwidth_going_west = Some( lonenode.pos.tipwidth_going_west.unwrap() -3 );
+                        if slot.pos.tipwidth_going_west < Some(0) { slot.pos.tipwidth_going_west = Some(0)};
                         slot.pos.tipwidth_going_east = Some( lonenode.pos.tipwidth_going_east.unwrap() -3 );
+                        if slot.pos.tipwidth_going_east < Some(0) { slot.pos.tipwidth_going_east = Some(0)};
+
                         slot.pos.h = Some( lonenode.pos.h.unwrap() + 3 );
-                        // eprintln!("0time bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+                        eprintln!("0time bw_east {} tw_east {} bw_west {} tw_west {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_east.unwrap(),slot.pos.basewidth_going_west.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
 
 
                         // maybe bug with tip width like for cone2
@@ -473,19 +476,28 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
 
                         let leaves = &mut mslot.leaves;
 
-                        let tip_width_left = leaves[0].pos.tipwidth_going_east.unwrap();
-                        let tip_width_right = leaves[1].pos.tipwidth_going_west.unwrap();
+                        let tip_width_left = leaves[0].pos.tipwidth_going_west.unwrap();
+                        let tip_width_right = leaves[1].pos.tipwidth_going_east.unwrap();
+
+                        eprintln!("twleft {}, twright {}", tip_width_left, tip_width_right);
+
                         let hmin = cmp::min(leaves[0].pos.h.unwrap(), leaves[1].pos.h.unwrap());
-                        let d_between_centers = tip_width_left+1 + tip_width_right+1 + 2*(hmin-1) + MIN_SPACING;
+                        let d_between_centers = tip_width_left+1 + tip_width_right+1 + 2*(hmin-1) + MIN_SPACING +1;
+                        // the +1 is added for aesthetic reasons with little understanding of what's going on!
+                        eprintln!("d_b_centers {}", d_between_centers);
             
-                        // MAYBE +1?
                         slot.pos.basewidth_going_west = Some( leaves[0].pos.basewidth_going_west.unwrap() + d_between_centers );
                         slot.pos.basewidth_going_east = Some( leaves[1].pos.basewidth_going_east.unwrap() );
+
                         slot.pos.h = Some( cmp::max(leaves[0].pos.h.unwrap(), leaves[1].pos.h.unwrap()) + 2);
-                        slot.pos.tipwidth_going_east = Some( slot.pos.basewidth_going_east.unwrap() - slot.pos.h.unwrap() +1 ); 
-                        slot.pos.tipwidth_going_west = Some( slot.pos.basewidth_going_west.unwrap() - slot.pos.h.unwrap() +1 ); 
+
+                        slot.pos.tipwidth_going_east = Some( slot.pos.basewidth_going_east.unwrap() - slot.pos.h.unwrap() +1 );
+                        if slot.pos.tipwidth_going_east < Some(0) { slot.pos.tipwidth_going_east = Some(0)};
+                        slot.pos.tipwidth_going_west = Some( slot.pos.basewidth_going_west.unwrap() - slot.pos.h.unwrap() +1 +2);
+                        if slot.pos.tipwidth_going_west < Some(0) { slot.pos.tipwidth_going_west = Some(0)};
+
                         slot.pos.branch_type = Some(BranchType::Trapezoid);
-                        // eprintln!("1time bw {} tw {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+                        eprintln!("1time bw_east {} tw_east {} bw_west {} tw_west {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_east.unwrap(),slot.pos.basewidth_going_west.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
             
                         leaves[0].pos.y = Some( -2 );
                         leaves[1].pos.y = Some( -2 );
@@ -503,15 +515,13 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                         let d1 = tip_width_left_1+1 + tip_width_right_1+1 + 2*(hmin-1) + MIN_SPACING;
             
 
-
                         let n_expr_leaves = leaves.len() - 1;
                         let exprwtot = d1 * (n_expr_leaves as i32) + ((n_expr_leaves as i32 -1 )*MIN_SPACING )  - (d1 -1) ;
                         // Source(s): dude trust me
 
                         // expr leaves pos
                         let mut xcount = - exprwtot/2;
-                        // eprintln!("exprwtot {}", exprwtot);
-                        // eprintln!("exprw {}", d1);
+                        eprintln!("exprwtot {}", exprwtot);
                         for j in 1..(n_expr_leaves +1 ) {
                             
                             leaves[j].pos.x = Some( xcount);
@@ -524,19 +534,29 @@ fn set_pos(slot: &mut Box<NodeSlot>) {
                         let tip_width_right_2 = leaves[1].pos.tipwidth_going_west.unwrap();
                         let hmin = cmp::min(leaves[0].pos.h.unwrap(), leaves[1].pos.h.unwrap());
                         let d2 = tip_width_left_2 +1 + tip_width_right_2 +1 + 2*(hmin-1) + MIN_SPACING;
-
+                        
                         leaves[0].pos.x = Some( -exprwtot/2 - d2 - MIN_SPACING);
                         leaves[0].pos.y = Some( -4 );
                         
+                        // eprintln!("d2 {}", d2);
                         // widths
-                        slot.pos.h = Some( cmp::max(leaves[0].pos.h.unwrap(), leaves[1].pos.h.unwrap()) + 2);
-                       
-                        slot.pos.tipwidth_going_east = Some( exprwtot/2 + leaves[1].pos.tipwidth_going_east.unwrap() + 1);
-                        slot.pos.basewidth_going_east = Some( exprwtot/2 + leaves[1].pos.basewidth_going_east.unwrap() + 1);
+                        slot.pos.h = Some( cmp::max(leaves[0].pos.h.unwrap(), leaves[1].pos.h.unwrap()) + 4);
+                        
+                        slot.pos.tipwidth_going_east = Some( exprwtot/2 + leaves[1].pos.tipwidth_going_east.unwrap() -4);
+                        if slot.pos.tipwidth_going_east < Some(0) { slot.pos.tipwidth_going_east = Some(0)};
 
-                        slot.pos.tipwidth_going_west = Some( exprwtot/2 + d2 + leaves[0].pos.tipwidth_going_west.unwrap() + 1 );
-                        slot.pos.basewidth_going_west = Some( exprwtot/2 + d2 + leaves[0].pos.basewidth_going_west.unwrap() + 1);
+                        // the +1 going west is because of the x
+                        slot.pos.tipwidth_going_west = Some( exprwtot/2 + d2 + leaves[0].pos.tipwidth_going_west.unwrap() -4 +1);
+                        if slot.pos.tipwidth_going_west < Some(0) { slot.pos.tipwidth_going_west = Some(0)};
+                        
+                        slot.pos.basewidth_going_east = Some( exprwtot/2 + leaves[1].pos.basewidth_going_east.unwrap());
+                        slot.pos.basewidth_going_west = Some( exprwtot/2 + d2 + leaves[0].pos.basewidth_going_west.unwrap() +1);
+                        // (this one is a bit off but should be ok)
+
                         slot.pos.branch_type = Some(BranchType::TimesN);
+
+                        eprintln!("Ntimes bw_east {} tw_east {} bw_west {} tw_west {} h {}", slot.pos.basewidth_going_east.unwrap(), slot.pos.tipwidth_going_east.unwrap(),slot.pos.basewidth_going_west.unwrap(), slot.pos.tipwidth_going_west.unwrap(), slot.pos.h.unwrap());
+
 
                     }
                     
@@ -656,7 +676,6 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
     const XRIGHTPAD: usize = 4;
     const YUPPAD: usize = 1;
     const YDOWNPAD: usize = 1;
-    // let mut v = vec![vec![' '; 150   ]; 35];
     
     let vxsize = full_w as usize + XLEFTPAD + XRIGHTPAD;
     let vysize = max.min_y.abs() as usize + YUPPAD + YDOWNPAD + 1; 
@@ -664,10 +683,7 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
     // eprintln!("vxsize {}", vxsize);
     // eprintln!("vysize {}", vysize);
 
-    // trasl(startslot, 75 , 35-1);
     trasl(startslot, -max.min_x  + XLEFTPAD as i32 , -max.min_y + YUPPAD as i32 );
-
-
 
     write(&startslot, &mut v);
     return v;
@@ -683,7 +699,13 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
 
         let mut number = slot.noderesult.unwrap().value;
         if number < 0 {
-            v[(newy) as usize][(newx) as usize - 1] =  '-';
+            let mut stepback = 1;
+            if number < -99999 {  stepback = number.to_string().len() / 2 +1; }
+            else if number < -999 { stepback = 4;}
+            else if number < -9 { stepback = 2;}
+
+
+            v[(newy) as usize][(newx) as usize - stepback] =  '-';
             // eprintln!("minus x {} ", newx -1);
             // eprintln!("minus y {} ", newy);
 
@@ -755,22 +777,36 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
 
                 let tnodex = mnode.leaves[0].pos.x.unwrap();
                 let tnodey = mnode.leaves[0].pos.y.unwrap();
-                // v[(tnodey + newy + 1) as usize][(tnodex + newx) as usize] = '|';
-                v[( tnodey ) as usize][( tnodex  + 2) as usize] = '-';
-                v[( tnodey ) as usize][( tnodex  + 3) as usize] = '>';
 
-                v[( tnodey) as usize][( tnodex - 2) as usize] = 'x';
+                // arrow
+                if mnode.leaves.len() == 1 { // zero times
+                    v[( tnodey + 1 ) as usize][( tnodex ) as usize] = '|';
+                    v[( tnodey + 2 ) as usize][( tnodex ) as usize] = '|';
+
+                    v[( tnodey ) as usize][( tnodex  + 2+1) as usize] = '.';
+                    v[( tnodey ) as usize][( tnodex  + 3+1) as usize] = '.';
+                    v[( tnodey ) as usize][( tnodex  + 4+1) as usize] = '.';
+                } else {
+
+                    let first_node_x = mnode.leaves[1].pos.x.unwrap();
+                    for j in (tnodex+2)..=(first_node_x-3) {
+                        v[( tnodey ) as usize][( j) as usize] = '-';
+                    }
+                    v[( tnodey ) as usize][( first_node_x -2 ) as usize] = '>';
+                }
+
+                v[( tnodey) as usize][( tnodex - 1) as usize] = 'x';
 
                 
-                
-                if mnode.leaves.len() >= 3 {
+                // scaffolding
+                if mnode.leaves.len() >= 3 { // 2 or more times
 
                     let first_node_x = mnode.leaves[1].pos.x.unwrap();
                     let last_node_x = mnode.leaves.last().unwrap().pos.x.unwrap();
 
                     let westernmost_k = mnode.leaves.len() - 1;
 
-                    for j in (first_node_x + 2)..(last_node_x - 2) { 
+                    for j in (first_node_x + 2)..=(last_node_x - 2) { 
                         v[(tnodey + 2) as usize][(j) as usize] = '‐'; // '—'
                     }
 
@@ -783,10 +819,17 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
                         let cx = mnode.leaves[k].pos.x.unwrap();
                         v[(tnodey + 1) as usize][(cx) as usize] = '|';
                     }
+                    
+                    let plus_spacing =  mnode.leaves[2].pos.x.unwrap() - mnode.leaves[1].pos.x.unwrap();
+
+                    for k in 1..(westernmost_k) {
+                        let cx = mnode.leaves[k].pos.x.unwrap();
+                        v[(tnodey ) as usize][(cx + plus_spacing/2) as usize] = '+';
+                    }
 
                     v[(newy - 1) as usize][newx  as usize] =  '|';
 
-                } else if mnode.leaves.len() == 2 {
+                } else if mnode.leaves.len() == 2 { // one time
 
                     let cx = mnode.leaves[1].pos.x.unwrap();
                     v[(tnodey + 1) as usize][(cx) as usize] = '|';
@@ -802,20 +845,6 @@ fn draw_2d_vec(startslot: &mut Box<NodeSlot>) -> Vec<Vec<char>> {
             },
         }
 
-
-        // if lastwasbin == true {
-        //     let length_of_arm =  i32::abs(newx - lastx);
-        //     if left == true {
-        //         for l in 1..(length_of_arm) {
-        //             v[(newy + l) as usize][(newx + l ) as usize] = '\\';
-        //         }
-        //         v[(newy) as usize][(lastx) as usize] =  lastchar;
-        //     } else {
-        //         for l in 1..(length_of_arm) {
-        //             v[(newy + l) as usize][(newx - l ) as usize] = '/';
-        //         }
-        //     }
-        // }
 
         //recurs write
         match &slot.node {
@@ -844,7 +873,7 @@ fn print_2d_vec(v: Vec<Vec<char>>) {
     // eprintln!("xlen {}", xlen);
     // eprintln!("xlen/termw {}", xlen/termw);
 
-    if xlen > termw {
+    if xlen >= termw {
         for n in 0..(xlen/termw){
 
 
@@ -871,7 +900,7 @@ fn print_2d_vec(v: Vec<Vec<char>>) {
 
 fn get_term_width() -> usize {
     let term_width;
-    if let Some((w, h)) = term_size::dimensions() {
+    if let Some((w, _h)) = term_size::dimensions() {
         term_width = w;
     } else {
     println!("Unable to get term size :(");
@@ -952,7 +981,7 @@ fn build_number(val: i32) -> NodeSlot {
     } else if val < 9999 {
         w = 3;
     } else {
-        w = val.to_string().len() + 2;
+        w = val.to_string().len() / 2 +1;
     }
     
     let mut tmppos = EMPTYPOS;
@@ -1009,8 +1038,8 @@ struct NodePositionInfo {
 enum BranchType {
     Cone,
     Trapezoid,
-    TimesZero,
-    TimesOne,
+    // TimesZero,
+    // TimesOne,
     TimesN,
 }
 
@@ -1140,7 +1169,8 @@ fn clear_spaces(vec: &mut Vec<Token>) -> & Vec<Token> {
 }
 
 
-fn parse_expression(vec: &[Token]) -> Result<Box<NodeSlot>, String> {
+fn parse_expression(vec: &[Token], rng: &mut rand::rngs::ThreadRng) -> Result<Box<NodeSlot>, String> {
+    // eprintln!("expr {:?}", vec);
     match vec.len() {
         0 => {
             let exit_str = format!("string not understood");
@@ -1156,7 +1186,7 @@ fn parse_expression(vec: &[Token]) -> Result<Box<NodeSlot>, String> {
         },
         _n => {
 
-            let mut par_balance: u8 = 0;
+            let mut par_balance: i8 = 0;
             let mut position_of_splitter: Option<usize> = None;
             'outer: for spl in &SPLITTERS{
                 for (n, x) in vec.iter().enumerate() {        
@@ -1167,7 +1197,6 @@ fn parse_expression(vec: &[Token]) -> Result<Box<NodeSlot>, String> {
                         other if other == spl => {
 
                             if par_balance == 0 {
-
                                 position_of_splitter = Some(n);
                                 break 'outer;
                             }
@@ -1175,6 +1204,7 @@ fn parse_expression(vec: &[Token]) -> Result<Box<NodeSlot>, String> {
                         _ => {},              
                     
                     }
+
                 }
             }
 
@@ -1182,7 +1212,7 @@ fn parse_expression(vec: &[Token]) -> Result<Box<NodeSlot>, String> {
         
                 if let Token::LeftPar = vec[0] { 
                     // eprintln!("no splitter found, got to clear parentheses maybe"); //PARSING DEBUG
-                    return parse_expression(&vec[1..vec.len()-1]);
+                    return parse_expression(&vec[1..vec.len()-1], rng);
                 } else {
                     let exit_str = format!("sequence {:?} not understood", vec);
                     return Err(exit_str);
@@ -1193,7 +1223,7 @@ fn parse_expression(vec: &[Token]) -> Result<Box<NodeSlot>, String> {
                 let splitter = &vec[poz];
         
         
-                return Ok( build_node_from_splitter(vec, splitter, poz)?  );
+                return Ok( build_node_from_splitter(vec, splitter, poz, rng)?  );
         
         
             }
@@ -1271,22 +1301,22 @@ fn parse_expression(vec: &[Token]) -> Result<Box<NodeSlot>, String> {
 
 
 
-use std::io::{self};
-
-fn parsedice(dice_expr :&Vec<Token>) {
-    match &mut parse_expression(dice_expr) {
-        Ok(mola) => {
-            fill(mola);
-            //println!("result: {}", mola.noderesult.unwrap().value);
+fn parsedice(dice_expr :&Vec<Token>, rng: &mut rand::rngs::ThreadRng) -> Result<DiceResult, String> {
+    match &mut parse_expression(dice_expr, rng) {
+        Ok(a) => {
+            fill(a, rng);
+            //println!("result: {}", a.noderesult.unwrap().value);
         
-            let arr = draw_2d_vec(mola);
+            let arr = draw_2d_vec(a);
             print_2d_vec(arr);
         
-            println!("result: {}", mola.noderesult.unwrap().value);
+            println!("result: {}", a.noderesult.unwrap().value);
+            return Ok(a.noderesult.unwrap());
         },
 
         Err(err) => {
             println!("{}", err);
+            return Err(err.to_string());
         }
 
 
@@ -1295,26 +1325,40 @@ fn parsedice(dice_expr :&Vec<Token>) {
 
 }
 
+// fn save_history() -> Result<(), String>{
+     
+
+//     let mut path = dirs::data_local_dir().ok_or("error")?;
+
+    
+//     match &mut dirs::data_local_dir() {
+//         Some(path) => {
+//             path.push("/.roll");
+//             match &mut std::fs::create_dir_all(path){
+//                 Ok(p2) => {
+//                     p2.push("/history.txt");
+//                     rl.save_history(  p2 ).unwrap();
+                    
+//                 },
+//                 Err(_) => {
+//                     println!("cannot find the right directory, printing history here");
+//                     rl.save_history("history.txt").unwrap();
+//                 },
+//             }
+
+
+//         },
+//         None => {
+//             println!("cannot find the right directory, printing history here");
+//             rl.save_history("history.txt").unwrap();
+//         },
+//     }
+// }
 
 fn main()  {
 
-    // loop {    let mut expression = String::new();
-    //     match io::stdin().read_line(&mut expression) {
-    //         Ok(_n) => {
+    let mut rng = rand::thread_rng();
 
-    //         }
-    //         Err(error) => println!("error: {}", error),
-    //     }
-    //     let expression = expression.trim();
-    //     let mut tokens = to_tokens(&expression);
-    //     let tokens = clear_spaces(&mut tokens);
-    //     // println!("{:?}", tokens);
-    //     parsedice(tokens);
-
-        
-    // }
-
- // `()` can be used when no completer is required
     let mut rl = Editor::<()>::new();
     if rl.load_history("history.txt").is_err() {
         println!("No previous history.");
@@ -1324,15 +1368,25 @@ fn main()  {
         match readline {
             Ok(line) => {
 
+                if line == "exit" || line == "Exit" || line == "quit" || line == "Quit" || line == "q" {
+                    break
+                }
+
                 rl.add_history_entry(line.as_str());
+
                 let expression = line.trim();
                 let mut restokens = to_tokens(&expression);
                 match &mut restokens {
                     Err(a) => println!("{}",a),
                     Ok(b) => {
                         let tokens = clear_spaces(b);
-        
-                        parsedice(tokens);
+
+                        match parsedice(tokens, &mut rng) {
+                            Err(_err) => {
+                                println!("parsing error: {:?}", _err);
+                            },
+                            Ok(_b) => {},
+                        }
 
                     },
                 }
@@ -1352,14 +1406,34 @@ fn main()  {
             }
         }
     }
-    rl.save_history("history.txt").unwrap();
+   
     
     // FREQUENCY TEST
+    
     // let big_number = 100000;
     // let expression = "1d20";  // MAKE THE DICE SIZE MATCH THE VEC! LEN
     // let mut counter = vec![0;20];
     // for _i in 0..big_number {
-    //     let res = parse(expression).eval();
+
+    //         let expression = expression.trim();
+    //         let mut restokens = to_tokens(&expression);
+    //         let mut res = 0;
+    //         match &mut restokens {
+    //             Err(a) => println!("{}",a),
+    //             Ok(b) => {
+    //                 let tokens = clear_spaces(b);
+    
+    //                 match parsedice(tokens, &mut rng) {
+    //                     Ok(a) => res = a.value,
+    //                     Err(_) => res = 0,
+
+    //                 } 
+
+
+    //             },
+    //         }
+
+
     //     counter[res as usize -1] += 1;
     // }
 
