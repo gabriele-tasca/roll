@@ -1,26 +1,51 @@
+Size limit on history file
 
-put history file somewhere specific
-
-decide rules and syntax for SPACES, pass, adv, reroll ... 
+decide rules and syntax for SPACES, pass, adv, reroll ...
 
 
 add negative numbers in input? ( ex "-1 + 1")
 
-change display rules for diceroll
 
-shell features
+make the case "(0-1)d6" clearer
 
-fix waste of vertical space for case
-    2x2x2x2x2
-    and similar 
+
+change display rules for diceroll (2d20 should be more like 2xd20)
+    --- 1) automatically build the times node, making 2d20 equivalent to 2xd20  ---- done
+    --- 2) have an option in Diceroll to display as a single number??    ----- done
+
+    --- 3) have an option in the Times node to say "5d6" or something
+         instead of just the number of times ----- CORRECT POSITION OF 5D6, AND WIDTHS OF TIMES NODE
+
+    
+    --- 3b) maybe put it above with a line (see sketch)  ----- NOT DONE
+
+    --- 4) trigger both the options when wanted, ex in 25d6 ----- done
+
+    --- 5) take away the now-useless part of diceroll
+
+
+fix display bug in case: 3d12 + 2d8 +17 -- done, but make sure tipwidth of cone1 and cone2 isn't fucked up
+
+
+
+set variables etc
+
+
+
+change something, somewhere, so that the left column in "2x2x2x2" is aligned again
+
+put history file somewhere specific -- ok but sounds sketchy
+
+
+-------------------
 
 maybe, better error handling (move checks to build_from_splitter in order to give better messages)
 
 fix rng -- done?
 
-fix display bug in case 
+fix display bug in case
     (1+1)+(1+1) | x 1 -- ok
 
-fix display bugs with stuff like 
+fix display bugs with stuff like
     1 x (1+1-(1+1)) -- should be good
     1x(1+1) +1 -- should be good
